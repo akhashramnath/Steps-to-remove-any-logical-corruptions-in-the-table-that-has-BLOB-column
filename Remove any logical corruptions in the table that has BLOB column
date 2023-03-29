@@ -1,0 +1,57 @@
+Steps to remove any logical corruptions in the table that has BLOB column.
+
+a. Create a temporary dummy table for storing the rowids of the corrupted LOBs. here the dummy table name is "corrupt_lobs".
+
+SQL> create table corrupt_lobs (corrupt_rowid rowid, err_num number);
+
+Create this table as a user who has necessary provilege to scan the target table for corruptions.
+
+b. Execute the following PL/SQL block to identify the corrupted rows. Provide the <lob Column name> and <Table name> with the respective LOB column and table name.
+
+SQL> declare
+	error_1578 exception;
+	error_1555 exception;
+	error_22922 exception;
+	pragma exception_init(error_1578,-1578);
+	pragma exception_init(error_1555,-1555);
+	pragma exception_init(error_22922,-22922);
+	num number;
+	begin
+	for cursor_lob in (select rowid r, &&lob_column from &table_owner..&table_with_lob) loop
+	begin
+	num := dbms_lob.instr (cursor_lob.&&lob_column, hextoraw ('889911')) ;
+	exception
+	when error_1578 then
+	insert into corrupt_lobs values (cursor_lob.r, 1578);
+	commit;
+	when error_1555 then
+	insert into corrupt_lobs values (cursor_lob.r, 1555);
+	commit;
+	when error_22922 then
+	insert into corrupt_lobs values (cursor_lob.r, 22922);
+	commit;
+	end;
+	end loop;
+	end;
+     /
+
+When prompted enter the details,
+
+Enter value for lob_column    : EMP_XML
+Enter value for table_owner   : HR
+Enter value for table_with_LOB: EMP
+
+Note - the execution time depends on the size of the table.
+
+c. Once Step b is complete, the table "corrupt_lobs"  will contain the rowids of the corrupted rows.
+
+SQL> select * from corrupt_lobs;
+
+d. Once the corruption is identified, we need to get rid of it. Its difficult to identify the cause of the corruption unless we have the steps to reproduce the corruption at will. 
+
+Empty the affected LOBs using the UPDATE statement,
+SQL> update <owner>.<tablename> set    <lob column> = empty_blob() where  rowid in (select corrupted_rowid from corrupt_lobs);
+     commit;
+(or)
+
+Delete the corrupted rows and then get the data from any other source.
